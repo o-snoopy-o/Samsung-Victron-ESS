@@ -1,6 +1,6 @@
 # MQTT Consumer for Battery Data
 [[inputs.mqtt_consumer]]
-  servers = ["tcp://192.168.1.200:1883"]
+  servers = ["tcp://cerbo-ip:1883"]
   topics = [
     "bms/system",
     "bms/tray1",
@@ -20,7 +20,7 @@
 
 # Output for Battery Data to InfluxDB 'batterydata' bucket
 [[outputs.influxdb_v2]]
-  urls = ["http://192.168.1.100:8086"]
+  urls = ["http://influxdb-ip:8086"]
   token = "yourtokenhere"
   organization = "home"
   bucket = "batterydata"
@@ -35,7 +35,7 @@
 
 # Modbus Input for Fronius Primo 5.0-1
 [[inputs.modbus]]
-  controller = "tcp://192.168.1.150:502"
+  controller = "tcp://fronius-ip:502"
   name = "fronius_primo"
   slave_id = 1
  [[inputs.modbus.holding_registers]]
@@ -77,7 +77,7 @@
 
 # Output for Fronius Modbus Data to InfluxDB 'froniusdata' bucket
 [[outputs.influxdb_v2]]
-  urls = ["http://192.168.1.100:8086"]
+  urls = ["http://influxdb-ip:8086"]
   token = "yourtokenhere"
   organization = "home"
   bucket = "froniusprimodata"
@@ -93,7 +93,7 @@
 
 # Modbus Input for Victron MultiPlus2
 [[inputs.modbus]]
-  controller = "tcp://192.168.1.200:502"
+  controller = "tcp://cerbo-ip:502"
   name = "victron_multipurpose"
   slave_id = 227
 [[inputs.modbus.holding_registers]]
@@ -154,7 +154,7 @@
 
 # Output for Victron MultiPlus2 Data to InfluxDB 'victrondata' bucket
 [[outputs.influxdb_v2]]
-  urls = ["http://192.168.1.100:8086"]
+  urls = ["http://influxdb-ip:8086"]
   token = "yourtokenhere"
   organization = "home"
   bucket = "victrondata"
