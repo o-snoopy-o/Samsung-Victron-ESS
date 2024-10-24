@@ -1,1 +1,305 @@
-Placeholder for flux samples
+Current PV Generation:
+from(bucket: "froniusprimodata")
+  |> range(start: -1m)
+  |> filter(fn: (r) => r._measurement == "modbus")
+  |> filter(fn: (r) => r._field == "AC_Power")
+  |> aggregateWindow(every: 5s, fn: mean, createEmpty: false)
+  |> yield(name: "mean")
+
+Historical PV Generation:
+from(bucket: "froniusprimodata")
+  |> range(start: -7d)
+  |> filter(fn: (r) => r._measurement == "modbus" and r._field == "AC_Power")
+  |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)
+  |> keep(columns: ["_time", "_value"])
+  |> yield(name: "AC_Power")
+
+Lifetime PV Generation:
+from(bucket: "froniusprimodata")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "modbus")
+  |> filter(fn: (r) => r._field == "AC_Lifetime_Energy_Production")
+  |> yield(name: "mean")
+
+Grid Voltage:
+from(bucket: "victrondata")
+  |> range(start: -1m)
+  |> filter(fn: (r) => r._measurement == "modbus" and r._field == "AC_Input_Voltage")
+  |> keep(columns: ["_time", "_value"])
+  |> yield(name: "AC_Input_Voltage_Data")
+
+Grid Frequency:
+from(bucket: "victrondata")
+  |> range(start: -1m)
+  |> filter(fn: (r) => r._measurement == "modbus" and r._field == "AC_Input_Frequency")
+  |> keep(columns: ["_time", "_value"])
+  |> yield(name: "Soc")
+
+Historical Grid Voltage:
+from(bucket: "victrondata")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r._measurement == "modbus" and r._field == "AC_Input_Voltage")
+  |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)
+  |> keep(columns: ["_time", "_value"])
+  |> yield(name: "AC_Input_Voltage_Data")
+
+Home Voltage:
+from(bucket: "victrondata")
+  |> range(start: -1m)
+  |> filter(fn: (r) => r._measurement == "modbus" and r._field == "AC_Output_Voltage")
+  |> keep(columns: ["_time", "_value"])
+  |> yield(name: "Soc")
+
+Home Frequency:
+from(bucket: "victrondata")
+  |> range(start: -1m)
+  |> filter(fn: (r) => r._measurement == "modbus" and r._field == "AC_Output_Frequency")
+  |> keep(columns: ["_time", "_value"])
+  |> yield(name: "Soc")
+
+Historical Home Voltage:
+from(bucket: "victrondata")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r._measurement == "modbus" and r._field == "AC_Output_Voltage")
+  |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)
+  |> keep(columns: ["_time", "_value"])
+  |> yield(name: "AC_Output_Voltage_Data")
+
+Home Power Cinsumption by Source: (Work In Progress)
+// Aggregate AC In to AC Out
+acInToAcOut = from(bucket: "victrondata")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r._measurement == "modbus" and r._field == "Energy_From_ACIn1_To_ACOut")
+  |> filter(fn: (r) => exists r._value)
+  |> aggregateWindow(every: 1h, fn: mean, createEmpty: true)
+  |> fill(value: 0.0)
+  |> keep(columns: ["_time", "_value"])
+  |> rename(columns: {_value: "acInToACOut"})
+
+// Aggregate Battery to AC Out
+batteryToAcOut = from(bucket: "victrondata")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r._measurement == "modbus" and r._field == "Energy_From_Battery_To_ACOut")
+  |> filter(fn: (r) => exists r._value)
+  |> aggregateWindow(every: 1h, fn: mean, createEmpty: true)
+  |> fill(value: 0.0)
+  |> keep(columns: ["_time", "_value"])
+  |> rename(columns: {_value: "batteryToACOut"})
+
+// Combine the two data streams and scale the values
+combined = join(tables: {acIn: acInToAcOut, battery: batteryToAcOut}, on: ["_time"])
+  |> map(fn: (r) => ({
+    _time: r._time,
+    acInToACOut: r.acInToACOut / 10000.0,
+    batteryToACOut: r.batteryToACOut / 10000.0
+  }))
+  |> yield(name: "StackedBarChartData")
+
+Battery SOC:
+from(bucket: "batterydata")
+  |> range(start: -1m)
+  |> filter(fn: (r) => r.topic == "bms/system" and r._field == "Soc")
+  |> keep(columns: ["_time", "_value"])
+  |> yield(name: "Soc")
+
+Battery Voltage:
+from(bucket: "batterydata")
+  |> range(start: -1m)
+  |> filter(fn: (r) => r.topic == "bms/system" and r._field == "Dc_Voltage")
+  |> keep(columns: ["_time", "_value"])
+  |> yield(name: "Soc")
+
+BMS Instructions:
+from(bucket: "batterydata")
+  |> range(start: -5m)
+  |> filter(fn: (r) => 
+    r._measurement == "mqtt_consumer" and 
+    (r._field == "Info_MaxChargeCurrent" or r._field == "Info_MaxChargeVoltage" or r._field == "Info_MaxDischargeCurrent") and 
+    r.host == "fbe719b5f705")
+  |> last()
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> drop(columns: ["_time"])
+  |> map(fn: (r) => ({
+      "Max Charge": string(v: r["Info_MaxChargeVoltage"]) + " V @ " + string(v: r["Info_MaxChargeCurrent"]) + " A",
+      "Max Discharge": string(v: r["Info_MaxDischargeCurrent"]) + " A"
+  }))
+
+Battery Cell Voltage Disparity:
+data = from(bucket: "batterydata")
+  |> range(start: -24h)
+  |> filter(fn: (r) => 
+    r._measurement == "mqtt_consumer" and 
+    (r._field == "System_MaxCellVoltage" or r._field == "System_MinCellVoltage") and
+    r.host == "fbe719b5f705")
+  |> aggregateWindow(every: 5m, fn: last)
+pivotedData = data
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+pivotedData
+  |> map(fn: (r) => ({
+    _time: r._time,
+    difference: r.System_MaxCellVoltage - r.System_MinCellVoltage
+  }))
+  |> yield(name: "voltage_difference")
+
+Battery Parameters:
+// Main query for system and alarms data
+systemData = from(bucket: "batterydata")
+  |> range(start: -5m)  // Adjust the time range as needed
+  |> filter(fn: (r) => 
+    r._measurement == "mqtt_consumer" and 
+    (r._field == "System_MaxCellTemperature" or
+     r._field == "System_MinCellTemperature" or  // Added Min Cell Temperature
+     r._field == "Alarms_CellImbalance" or 
+     r._field == "Alarms_HighChargeTemperature" or
+     r._field == "Alarms_HighTemperature") and
+    r.host == "fbe719b5f705")
+  |> filter(fn: (r) => 
+    (r._field != "System_MaxCellTemperature" or (exists r._value and r._value != 0)) and
+    (r._field != "System_MinCellTemperature" or (exists r._value and r._value != 0)))  // Exclude null and zero values for temperature
+  |> last()
+  |> map(fn: (r) => ({
+      Attribute: 
+        if r._field == "Alarms_CellImbalance" then "Cell Imbalance" else
+        if r._field == "Alarms_HighChargeTemperature" then "High Charge Temp" else
+        if r._field == "Alarms_HighTemperature" then "High Temp" else
+        if r._field == "System_MaxCellTemperature" then "Max Cell Temp" else
+        if r._field == "System_MinCellTemperature" then "Min Cell Temp" else r._field,  // Added Min Cell Temp
+      Status: 
+        if r._field == "Alarms_CellImbalance" or r._field == "Alarms_HighChargeTemperature" or r._field == "Alarms_HighTemperature" then
+          if r._value == 1 then "Active" else "Ok"
+        else string(v: r._value) + " °C"  // Apply °C for temperature values
+  }))
+  |> keep(columns: ["Attribute", "Status"])  // Keep only the renamed columns
+
+// Query for highest cell voltage across trays
+cellVoltageDataMax = from(bucket: "batterydata")
+  |> range(start: -5m)  // Adjust the time range as needed
+  |> filter(fn: (r) => 
+    r._measurement == "mqtt_consumer" and 
+    r._field =~ /Voltages_Cell\d+/ and  // Only include cell voltage fields
+    r.host == "fbe719b5f705")
+  |> filter(fn: (r) => r._value != 0 and exists r._value)  // Exclude zero and null values
+  |> last()
+  |> group()  // Group all data together
+  |> max(column: "_value")  // Find the maximum voltage across all trays and cells
+  |> map(fn: (r) => ({
+      Attribute: "Highest Cell Voltage",
+      Status: string(v: r._value) + " V - (" + r.topic + " - " + r._field + ")"  // Display the formatted value
+  }))
+  |> keep(columns: ["Attribute", "Status"])
+
+// Query for lowest cell voltage across trays
+cellVoltageDataMin = from(bucket: "batterydata")
+  |> range(start: -5m)  // Adjust the time range as needed
+  |> filter(fn: (r) => 
+    r._measurement == "mqtt_consumer" and 
+    r._field =~ /Voltages_Cell\d+/ and  // Only include cell voltage fields
+    r.host == "fbe719b5f705")
+  |> filter(fn: (r) => r._value != 0 and exists r._value)  // Exclude zero and null values
+  |> last()
+  |> group()  // Group all data together
+  |> min(column: "_value")  // Find the minimum voltage across all trays and cells
+  |> map(fn: (r) => ({
+      Attribute: "Lowest Cell Voltage",
+      Status: string(v: r._value) + " V - (" + r.topic + " - " + r._field + ")"  // Display the formatted value
+  }))
+  |> keep(columns: ["Attribute", "Status"])
+
+// Query for NrOfModulesOnline
+nrOfModulesOnlineData = from(bucket: "batterydata")
+  |> range(start: -5m)
+  |> filter(fn: (r) => 
+    r._measurement == "mqtt_consumer" and 
+    r._field == "NrOfModulesOnline" and
+    r.host == "fbe719b5f705")
+  |> last()
+  |> map(fn: (r) => ({
+      Attribute: "NrOfModulesOnline",
+      Status: string(v: r._value)
+  }))
+  |> keep(columns: ["Attribute", "Status"])
+
+// Query for NrOfModulesOffline
+nrOfModulesOfflineData = from(bucket: "batterydata")
+  |> range(start: -5m)
+  |> filter(fn: (r) => 
+    r._measurement == "mqtt_consumer" and 
+    r._field == "NrOfModulesOffline" and
+    r.host == "fbe719b5f705")
+  |> last()
+  |> map(fn: (r) => ({
+      Attribute: "NrOfModulesOffline",
+      Status: string(v: r._value)
+  }))
+  |> keep(columns: ["Attribute", "Status"])
+
+// Query for MinVoltageCellID
+minVoltageCellIDData = from(bucket: "batterydata")
+  |> range(start: -5m)
+  |> filter(fn: (r) => 
+    r._measurement == "mqtt_consumer" and 
+    r._field == "System_MinVoltageCellID" and
+    r.host == "fbe719b5f705")
+  |> last()
+  |> map(fn: (r) => ({
+      Attribute: "MinVoltageCellID",
+      Status: string(v: r._value)
+  }))
+  |> keep(columns: ["Attribute", "Status"])
+
+// Query for MaxVoltageCellID
+maxVoltageCellIDData = from(bucket: "batterydata")
+  |> range(start: -5m)
+  |> filter(fn: (r) => 
+    r._measurement == "mqtt_consumer" and 
+    r._field == "System_MaxVoltageCellID" and
+    r.host == "fbe719b5f705")
+  |> last()
+  |> map(fn: (r) => ({
+      Attribute: "MaxVoltageCellID",
+      Status: string(v: r._value)
+  }))
+  |> keep(columns: ["Attribute", "Status"])
+
+// Query for Victron MultiPlus 2 status
+victronStatusData = from(bucket: "victrondata")
+  |> range(start: -5m)
+  |> filter(fn: (r) => 
+    r.host == "fbe719b5f705" and 
+    r._field == "MultiPlus2_Status")
+  |> last()
+  |> map(fn: (r) => ({
+      Attribute: "MultiPlus2 Status",
+      Status: 
+        if int(v: r._value) == 2 then "Inverting" else
+        if int(v: r._value) == 3 then "Charging" else
+        if int(v: r._value) == 4 then "Passthrough" else
+        if int(v: r._value) == 5 then "Off" else
+        if int(v: r._value) == 6 then "Eco" else
+        if int(v: r._value) == 7 then "External Control" else "Unknown Status"
+  }))
+  |> keep(columns: ["Attribute", "Status"])
+union(tables: [
+  systemData, 
+  cellVoltageDataMax, 
+  cellVoltageDataMin, 
+  nrOfModulesOnlineData, 
+  nrOfModulesOfflineData, 
+  minVoltageCellIDData, 
+  maxVoltageCellIDData,
+  victronStatusData
+])
+  |> sort(columns: ["Attribute"])
+
+
+
+
+
+
+
+
+
+
+
+
+
