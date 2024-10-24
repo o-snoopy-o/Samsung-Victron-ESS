@@ -71,6 +71,8 @@ The dashboards are always a work in progress and may never be complete. I would 
 But first a warning!
 Do not connect batteries of differing State of Charge. If you have a bank of more than 1 battery, they should be sitting at a very similar voltage otherwise HUGE currents can flow between batteries in parallel causing the 63amp fuse to blow or worse, causing the battery BMS to enter a fault state that may not be recoverable. Ensure that the batteries are close in voltage (within 0.01v) and hook them all up together or charge them all to the same voltage before connecting in parallel. You may also connect them via a suitable resistor to limit the inrush current, but this can take a LOOONG time to equalise, try and avoid this where possible. You can use the direct terminals that bypass the BMS to check the voltage as the output terminals will not be live with the BMS off.
 
+Resources: ([Blog?](https://elpm482-00005.blogspot.com/2024/06/samsung-elpm482-00005.html))
+
 ## Parts
 - Nx Samsung ELPM482-00005 Batteries
 - 1x Keyestudio KS0411 CAN-BUS Shield ([Wiki](https://wiki.keyestudio.com))
