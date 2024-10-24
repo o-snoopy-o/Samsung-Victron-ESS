@@ -1,1 +1,329 @@
-placeholder for arduino code
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include <SPI.h>
+#include <mcp2515.h>
+ 
+// Replace with your network credentials
+const char* ssid = "yournetworkssid";
+const char* password = "yourpasswordorkey";
+ 
+// MQTT Broker
+const char* mqtt_server = "192.168.1.200";
+const int mqtt_port = 1883;
+const char* mqtt_topics[] = {"bms/system", "bms/tray1", "bms/tray2", "bms/tray3", "bms/tray4", "bms/tray5", "bms/tray6", "bms/tray7", "bms/tray8", "bms/tray9", "bms/tray10"};
+ 
+// WiFi and MQTT Client
+WiFiClient espClient;
+PubSubClient client(espClient);
+ 
+// CAN-BUS
+MCP2515 mcp2515(10);
+ 
+// Accumulation Variables
+float voltageSum = 0;
+float currentSum = 0;
+int socSum = 0;
+uint16_t voltages[140] = {0};  // Array to store raw voltages for 140 cells (14 cells per tray * 10 trays)
+bool cellReceived[140] = {false}; // Track whether data has been received for each cell
+int sampleCount = 0;
+ 
+int8_t minCellTemp = 0;
+int8_t maxCellTemp = 0;
+bool tempReceived = false;
+ 
+// Charge/Discharge Variables
+float chargeVoltage = 0;
+float chargeCurrentLimit = 0;
+float dischargeCurrentLimit = 0;
+float dischargeVoltage = 0;
+ 
+// Valid Data Flags
+bool chargeVoltageReceived = false;
+bool chargeCurrentLimitReceived = false;
+bool dischargeCurrentLimitReceived = false;
+ 
+// Alarm Status
+bool highVoltageAlarm = false;
+bool lowVoltageAlarm = false;
+bool highTemperatureAlarm = false;
+bool lowTemperatureAlarm = false;
+bool highChargeCurrentAlarm = false;
+bool highDischargeCurrentAlarm = false;
+bool highChargeTemperatureAlarm = false;
+bool cellImbalanceAlarm = false;
+ 
+// Timing - 30seconds between data sending
+unsigned long lastPublish = 0;
+const unsigned long publishInterval = 30000;
+ 
+void setup() {
+    Serial.begin(115200);
+    
+    // CAN-BUS Initialisation
+    mcp2515.reset();
+    mcp2515.setBitrate(CAN_500KBPS);
+    mcp2515.setNormalMode();
+    
+    connectToWiFi();
+ 
+    // Set MQTT
+    client.setServer(mqtt_server, mqtt_port);
+ 
+    // Set the MQTT Buffer
+    client.setBufferSize(2048);
+ 
+    // Connect to the MQTT broker
+    connectToMQTT();
+}
+ 
+void loop() {
+    struct can_frame canMsg;
+ 
+    if (mcp2515.readMessage(&canMsg) == MCP2515::ERROR_OK) {
+        processCANMessage(canMsg);
+    }
+ 
+    // Publish
+    if (millis() - lastPublish > publishInterval) {
+        lastPublish = millis();
+        publishAllData();
+    }
+ 
+    // Reconnect
+    if (!client.connected()) {
+        connectToMQTT();
+    }
+    client.loop();
+}
+ 
+void connectToWiFi() {
+    Serial.print("Connecting to ");
+    Serial.println(ssid);
+ 
+    WiFi.begin(ssid, password);
+ 
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+ 
+    Serial.println("Connected to WiFi");
+}
+ 
+void connectToMQTT() {
+    while (!client.connected()) {
+        Serial.print("Connecting to MQTT...");
+ 
+        if (client.connect("SamsungBatteryStack")) {
+            Serial.println("connected");
+        } else {
+            Serial.print("failed, rc=");
+            Serial.print(client.state());
+            Serial.println(" try again in 5 seconds");
+            delay(5000);
+        }
+    }
+}
+ 
+void processCANMessage(const struct can_frame &canMsg) {
+    uint16_t trayID = (canMsg.data[1] << 8) | canMsg.data[0];
+    int trayOffset = (trayID - 1) * 14;
+ 
+    if (canMsg.can_id == 0x500) {
+        processGeneralData(canMsg);
+    } else if (canMsg.can_id == 0x501) {
+        processAlarmData(canMsg);
+    } else if (canMsg.can_id >= 0x5F0 && canMsg.can_id <= 0x5F9) {
+        processCellData(canMsg, trayOffset);
+    } else if (canMsg.can_id == 0x502) {
+        processChargeDischargeData(canMsg);
+    } else if (canMsg.can_id == 0x504) {
+        processTemperatureData(canMsg);
+    }
+}
+ 
+void processGeneralData(const struct can_frame &canMsg) {
+    float voltage = ((canMsg.data[1] << 8) | canMsg.data[0]) * 0.01;
+    float current = (int16_t)((canMsg.data[3] << 8) | canMsg.data[2]);
+    int soc = canMsg.data[4];
+ 
+    voltageSum += voltage;
+    currentSum += current;
+    socSum += soc;
+    sampleCount++;
+}
+ 
+void processAlarmData(const struct can_frame &canMsg) {
+    highVoltageAlarm = canMsg.data[0] & 0x01;
+    lowVoltageAlarm = canMsg.data[0] & 0x02;
+    highTemperatureAlarm = canMsg.data[0] & 0x04;
+    lowTemperatureAlarm = canMsg.data[0] & 0x08;
+    highChargeCurrentAlarm = canMsg.data[0] & 0x10;
+    highDischargeCurrentAlarm = canMsg.data[0] & 0x20;
+    highChargeTemperatureAlarm = canMsg.data[0] & 0x40;
+    cellImbalanceAlarm = canMsg.data[0] & 0x80;
+}
+ 
+void processCellData(const struct can_frame &canMsg, int trayOffset) {
+    int baseIndex = (canMsg.can_id - 0x5F0) * 3;
+    voltages[trayOffset + baseIndex + 0] = (canMsg.data[3] << 8) | canMsg.data[2];
+    voltages[trayOffset + baseIndex + 1] = (canMsg.data[5] << 8) | canMsg.data[4];
+    voltages[trayOffset + baseIndex + 2] = (canMsg.data[7] << 8) | canMsg.data[6];
+    cellReceived[trayOffset + baseIndex + 0] = true;
+    cellReceived[trayOffset + baseIndex + 1] = true;
+    cellReceived[trayOffset + baseIndex + 2] = true;
+}
+ 
+void processChargeDischargeData(const struct can_frame &canMsg) {
+    chargeVoltage = ((canMsg.data[1] << 8) | canMsg.data[0]) * 0.1;
+    chargeCurrentLimit = ((canMsg.data[3] << 8) | canMsg.data[2]) * 0.1;
+    dischargeCurrentLimit = ((canMsg.data[5] << 8) | canMsg.data[4]) * 0.1;
+    dischargeVoltage = ((canMsg.data[7] << 8) | canMsg.data[6]) * 0.1;
+    
+    chargeVoltageReceived = true;
+    chargeCurrentLimitReceived = true;
+    dischargeCurrentLimitReceived = true;
+}
+ 
+void processTemperatureData(const struct can_frame &canMsg) {
+    minCellTemp = (int8_t)canMsg.data[6];
+    maxCellTemp = (int8_t)canMsg.data[5];
+    tempReceived = true;
+}
+ 
+void publishAllData() {
+    if (sampleCount > 0) {
+        // Calc Avg
+        float avgVoltage = voltageSum / sampleCount;
+        float avgCurrent = currentSum / sampleCount;
+        int avgSoc = socSum / sampleCount;
+ 
+        // Send SystemData
+        String payloadSystem = constructSystemPayload(avgVoltage, avgCurrent, avgSoc);
+        sendMQTTMessage(mqtt_topics[0], payloadSystem);
+ 
+        // Send Tray Cell Data
+        for (int i = 0; i < 10; i++) {
+            String payloadTray = constructTrayPayload(i * 14);
+            sendMQTTMessage(mqtt_topics[i + 1], payloadTray);
+        }
+        resetAccumulators();
+    }
+}
+ 
+String constructSystemPayload(float avgVoltage, float avgCurrent, int avgSoc) {
+    float power = avgVoltage * avgCurrent;
+ 
+    String payload = "{\"Dc\": {\"Power\": ";
+    payload += String(power);
+    payload += ", \"Voltage\": ";
+    payload += String(avgVoltage);
+    payload += "}, \"Soc\": ";
+    payload += String(avgSoc);
+    payload += ", \"System\": {";
+    if (tempReceived) {
+        payload += "\"MinCellTemperature\": " + String(minCellTemp) + ", ";
+        payload += "\"MaxCellTemperature\": " + String(maxCellTemp);
+    } else {
+        payload += "\"MinCellTemperature\": 0, \"MaxCellTemperature\": 0";
+    }
+    payload += "}, \"InstalledCapacity\": 752.0";
+    
+    // Add Alarm Status
+    payload += ", \"Alarms\": {";
+    payload += "\"HighVoltage\": " + String(highVoltageAlarm) + ", ";
+    payload += "\"LowVoltage\": " + String(lowVoltageAlarm) + ", ";
+    payload += "\"HighTemperature\": " + String(highTemperatureAlarm) + ", ";
+    payload += "\"LowTemperature\": " + String(lowTemperatureAlarm) + ", ";
+    payload += "\"HighChargeCurrent\": " + String(highChargeCurrentAlarm) + ", ";
+    payload += "\"HighDischargeCurrent\": " + String(highDischargeCurrentAlarm) + ", ";
+    payload += "\"HighChargeTemperature\": " + String(highChargeTemperatureAlarm) + ", ";
+    payload += "\"CellImbalance\": " + String(cellImbalanceAlarm) + ", ";
+    payload += "\"LowSoc\": 0, \"HighCurrent\": 0, \"LowCellVoltage\": 0, \"FuseBlown\": 0";
+    payload += "}, \"Info\": {";
+    payload += "\"ChargeRequest\": 0";
+ 
+    // Add Charge Voltage
+    if (chargeVoltageReceived) {
+        payload += ", \"MaxChargeVoltage\": " + String(chargeVoltage);
+    }
+    
+    // Add Charge Current
+    if (chargeCurrentLimitReceived) {
+        payload += ", \"MaxChargeCurrent\": " + String(chargeCurrentLimit);
+    }
+ 
+    // Add Discharge Current
+    if (dischargeCurrentLimitReceived) {
+        payload += ", \"MaxDischargeCurrent\": " + String(dischargeCurrentLimit);
+    }
+    
+    payload += "}, \"History\": {";
+    payload += "\"ChargeCycles\": 5, ";
+    payload += "\"MinimumVoltage\": 40.8, ";
+    payload += "\"MaximumVoltage\": 58.4, ";
+    payload += "\"TotalAhDrawn\": 1057.3";
+    payload += "}}";
+ 
+    return payload;
+}
+ 
+String constructTrayPayload(int startIndex) {
+    String payload = "{\"Voltages\": {";
+    for (int i = startIndex; i < startIndex + 14; i++) {
+        payload += "\"Cell" + String(i - startIndex + 1) + "\": ";
+        payload += cellReceived[i] ? String(voltages[i] * 0.001, 3) : "0";
+        if (i < startIndex + 13) payload += ", ";
+    }
+    payload += "}}";
+ 
+    return payload;
+}
+ 
+void sendMQTTMessage(const char* topic, const String& payload) {
+    int packetSize = payload.length();
+    Serial.print("Packet size: ");
+    Serial.println(packetSize);
+ 
+    if (client.publish(topic, payload.c_str(), true)) {
+        Serial.println("MQTT message sent successfully!");
+    } else {
+        Serial.println("Failed to send MQTT message!");
+ 
+        int state = client.state();
+        Serial.print("MQTT client state: ");
+        Serial.println(state);
+    }
+}
+ 
+void resetAccumulators() {
+    voltageSum = 0;
+    currentSum = 0;
+    socSum = 0;
+    sampleCount = 0;
+    memset(voltages, 0, sizeof(voltages));
+    memset(cellReceived, 0, sizeof(cellReceived));
+    minCellTemp = 0;
+    maxCellTemp = 0;
+    tempReceived = false;
+    chargeVoltage = 0;
+    chargeCurrentLimit = 0;
+    dischargeCurrentLimit = 0;
+    dischargeVoltage = 0;
+    
+    // Reset Valid Data Tracking Flags
+    chargeVoltageReceived = false;
+    chargeCurrentLimitReceived = false;
+    dischargeCurrentLimitReceived = false;
+ 
+    // Reset Alarm Status
+    highVoltageAlarm = false;
+    lowVoltageAlarm = false;
+    highTemperatureAlarm = false;
+    lowTemperatureAlarm = false;
+    highChargeCurrentAlarm = false;
+    highDischargeCurrentAlarm = false;
+    highChargeTemperatureAlarm = false;
+    cellImbalanceAlarm = false;
+}
+
