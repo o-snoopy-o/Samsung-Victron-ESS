@@ -23,8 +23,8 @@ MCP2515 mcp2515(10);
 float voltageSum = 0;
 float currentSum = 0;
 int socSum = 0;
-uint16_t voltages[140] = {0};  // Array to store raw voltages for 140 cells (14 cells per tray * 10 trays)
-bool cellReceived[140] = {false}; // Track whether data has been received for each cell
+uint16_t voltages[140] = {0};
+bool cellReceived[140] = {false};
 int sampleCount = 0;
  
 int8_t minCellTemp = 0;
