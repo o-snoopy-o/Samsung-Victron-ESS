@@ -36,11 +36,12 @@ I will share my known running code for all elements of the system. The code is a
 
 The batteries communicate over CAN-BUS directly to the CAN-BUS shield on the Arduino UNO R4 WiFi. The RJ45 connector must be wired specifically to ensure the CAN high and low are connected to the DB9 connector on the shield. The adapter shown was the cleanest way to enable this wire matching.
 
-![Wiring and Adapter](IMAGE_LINK)
+![Wiring and Adapter - Coming Soon](IMAGE_LINK)
 
 The batteries can be interlinked with RJ45 Ethernet cables, with special attention paid to the correct ports and termination resistors.
 
-![Termination Resistors and Cables](IMAGE_LINK)
+![TR](https://github.com/o-snoopy-o/Samsung-Victron-ESS/blob/main/images/Screenshot%202024-10-24%20204348.png)
+![CAN-BUS](https://github.com/o-snoopy-o/Samsung-Victron-ESS/blob/main/images/Screenshot%202024-10-24%20204236.png)
 
 The Arduino can be configured using Arduino IDE. Modify the provided code appropriately to define your MQTT broker. In my case, it was the Cerbo GX on `192.168.1.200/24`.
 
@@ -53,6 +54,8 @@ You can directly copy my configuration for dbus-mqtt-battery if you’d like. I 
 ## Result
 
 After wiring the connections, uploading the sketch to the Arduino, and configuring the ‘Venus OS’, you should now see battery parameters available in the ‘Venus OS’ console. If you haven’t already done so, you can configure ESS assistants for your Multiplus-II.
+
+![VRM Example](https://github.com/o-snoopy-o/Samsung-Victron-ESS/blob/main/images/Screenshot%202024-10-23%20131711.png)
 
 ## Further
 
@@ -112,7 +115,11 @@ The bare minimum configuration is:
 
 At this point, the Victron ecosystem should identify the battery and respond to the charge voltage limit and charge current limit, likewise for the discharge current limit.
 
+![Parameters](https://github.com/o-snoopy-o/Samsung-Victron-ESS/blob/main/images/Screenshot%202024-10-23%20132123.png)
+
 If you have more than one battery and the interface does not show all batteries, check you have daisy-chained the CAN-BUS properly and that the termination resistors are set appropriately.
+
+![Modules](https://github.com/o-snoopy-o/Samsung-Victron-ESS/blob/main/images/Screenshot%202024-10-23%20132032.png)
 
 ### Part 3 – Observe for Correct Data
 
@@ -125,5 +132,6 @@ The battery supports a maximum charge current of **47 Amps** per module at **58.
 ## Future Plans
 
 I will monitor the system for cell imbalance and battery balancing. The Grafana dashboard displays the cell imbalance or disparity, and I will be keeping an eye on this more closely in the coming weeks.
+![Grafana](https://github.com/o-snoopy-o/Samsung-Victron-ESS/blob/main/images/Screenshot%202024-10-23%20131531.jpg)
 
 ---
