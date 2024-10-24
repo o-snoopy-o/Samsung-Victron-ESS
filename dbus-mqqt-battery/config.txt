@@ -10,7 +10,7 @@ soc = 10
 recalculate_every = 300
 
 [MQTT]
-broker_address = 192.168.1.200
+broker_address = your cerbo or venus os ip addres here
 broker_port = 1883
 tls_enabled = 0
 topic = bms/system
