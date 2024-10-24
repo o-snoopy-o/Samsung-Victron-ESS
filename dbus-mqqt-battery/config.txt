@@ -1,0 +1,55 @@
+[DEFAULT]
+logging = WARNING
+device_name = Samsung-Batt-Stack
+device_instance = 41
+timeout = 60
+
+[TIME_TO_GO]
+enabled = 1
+soc = 10
+recalculate_every = 300
+
+[MQTT]
+broker_address = 192.168.1.200
+broker_port = 1883
+tls_enabled = 0
+topic = bms/system
+
+[BATTERY_INFO]
+; First part is the Cerbo name, second part is from arduiono payload.
+
+MaxChargeVoltage = max_charge_voltage
+MaxChargeCurrent = max_charge_current
+MaxDischargeCurrent = max_discharge_current
+Voltage = voltage
+Current = current
+Soc = Soc
+Temperature = temperature
+MinCellVoltage = MinCellVoltage
+MaxCellVoltage = MaxCellVoltage
+MinVoltageCellId = MinVoltageCellId
+MaxVoltageCellId = MaxVoltageCellId
+MinCellTemperature = MinCellTemperature
+MaxCellTemperature = MaxCellTemperature
+MinTemperatureCellId = MinTemperatureCellId
+MaxTemperatureCellId = MaxTemperatureCellId
+NrOfModulesOnline = NrOfModulesOnline
+NrOfModulesOffline = NrOfModulesOffline
+NrOfModulesBlockingCharge = modules_blocking_charge
+NrOfModulesBlockingDischarge = modules_blocking_discharge
+InstalledCapacity = InstalledCapacity
+
+[ALARMS]
+LowVoltage = low_voltage
+HighVoltage = high_voltage
+LowSoc = low_soc
+HighChargeCurrent = high_charge_current
+HighDischargeCurrent = high_discharge_current
+HighCurrent = high_current
+CellImbalance = cell_imbalance
+HighChargeTemperature = high_charge_temperature
+LowChargeTemperature = low_charge_temperature
+LowCellVoltage = low_cell_voltage
+LowTemperature = low_temperature
+HighTemperature = high_temperature
+FuseBlown = fuse_blown
