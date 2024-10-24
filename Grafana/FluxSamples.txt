@@ -66,7 +66,6 @@ from(bucket: "victrondata")
   |> yield(name: "AC_Output_Voltage_Data")
 
 Home Power Cinsumption by Source: (Work In Progress)
-// Aggregate AC In to AC Out
 acInToAcOut = from(bucket: "victrondata")
   |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
   |> filter(fn: (r) => r._measurement == "modbus" and r._field == "Energy_From_ACIn1_To_ACOut")
@@ -75,8 +74,6 @@ acInToAcOut = from(bucket: "victrondata")
   |> fill(value: 0.0)
   |> keep(columns: ["_time", "_value"])
   |> rename(columns: {_value: "acInToACOut"})
-
-// Aggregate Battery to AC Out
 batteryToAcOut = from(bucket: "victrondata")
   |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
   |> filter(fn: (r) => r._measurement == "modbus" and r._field == "Energy_From_Battery_To_ACOut")
@@ -85,8 +82,6 @@ batteryToAcOut = from(bucket: "victrondata")
   |> fill(value: 0.0)
   |> keep(columns: ["_time", "_value"])
   |> rename(columns: {_value: "batteryToACOut"})
-
-// Combine the two data streams and scale the values
 combined = join(tables: {acIn: acInToAcOut, battery: batteryToAcOut}, on: ["_time"])
   |> map(fn: (r) => ({
     _time: r._time,
@@ -142,20 +137,19 @@ pivotedData
   |> yield(name: "voltage_difference")
 
 Battery Parameters:
-// Main query for system and alarms data
 systemData = from(bucket: "batterydata")
-  |> range(start: -5m)  // Adjust the time range as needed
+  |> range(start: -5m)
   |> filter(fn: (r) => 
     r._measurement == "mqtt_consumer" and 
     (r._field == "System_MaxCellTemperature" or
-     r._field == "System_MinCellTemperature" or  // Added Min Cell Temperature
+     r._field == "System_MinCellTemperature" or
      r._field == "Alarms_CellImbalance" or 
      r._field == "Alarms_HighChargeTemperature" or
      r._field == "Alarms_HighTemperature") and
     r.host == "fbe719b5f705")
   |> filter(fn: (r) => 
     (r._field != "System_MaxCellTemperature" or (exists r._value and r._value != 0)) and
-    (r._field != "System_MinCellTemperature" or (exists r._value and r._value != 0)))  // Exclude null and zero values for temperature
+    (r._field != "System_MinCellTemperature" or (exists r._value and r._value != 0)))
   |> last()
   |> map(fn: (r) => ({
       Attribute: 
@@ -163,49 +157,44 @@ systemData = from(bucket: "batterydata")
         if r._field == "Alarms_HighChargeTemperature" then "High Charge Temp" else
         if r._field == "Alarms_HighTemperature" then "High Temp" else
         if r._field == "System_MaxCellTemperature" then "Max Cell Temp" else
-        if r._field == "System_MinCellTemperature" then "Min Cell Temp" else r._field,  // Added Min Cell Temp
+        if r._field == "System_MinCellTemperature" then "Min Cell Temp" else r._field,
       Status: 
         if r._field == "Alarms_CellImbalance" or r._field == "Alarms_HighChargeTemperature" or r._field == "Alarms_HighTemperature" then
           if r._value == 1 then "Active" else "Ok"
-        else string(v: r._value) + " °C"  // Apply °C for temperature values
+        else string(v: r._value) + " °C"
   }))
-  |> keep(columns: ["Attribute", "Status"])  // Keep only the renamed columns
+  |> keep(columns: ["Attribute", "Status"])
 
-// Query for highest cell voltage across trays
 cellVoltageDataMax = from(bucket: "batterydata")
-  |> range(start: -5m)  // Adjust the time range as needed
+  |> range(start: -5m)
   |> filter(fn: (r) => 
     r._measurement == "mqtt_consumer" and 
-    r._field =~ /Voltages_Cell\d+/ and  // Only include cell voltage fields
+    r._field =~ /Voltages_Cell\d+/ and
     r.host == "fbe719b5f705")
-  |> filter(fn: (r) => r._value != 0 and exists r._value)  // Exclude zero and null values
+  |> filter(fn: (r) => r._value != 0 and exists r._value)
   |> last()
-  |> group()  // Group all data together
-  |> max(column: "_value")  // Find the maximum voltage across all trays and cells
+  |> group()
+  |> max(column: "_value")
   |> map(fn: (r) => ({
       Attribute: "Highest Cell Voltage",
-      Status: string(v: r._value) + " V - (" + r.topic + " - " + r._field + ")"  // Display the formatted value
+      Status: string(v: r._value) + " V - (" + r.topic + " - " + r._field + ")"
   }))
   |> keep(columns: ["Attribute", "Status"])
-
-// Query for lowest cell voltage across trays
 cellVoltageDataMin = from(bucket: "batterydata")
-  |> range(start: -5m)  // Adjust the time range as needed
+  |> range(start: -5m)
   |> filter(fn: (r) => 
     r._measurement == "mqtt_consumer" and 
-    r._field =~ /Voltages_Cell\d+/ and  // Only include cell voltage fields
+    r._field =~ /Voltages_Cell\d+/ and
     r.host == "fbe719b5f705")
-  |> filter(fn: (r) => r._value != 0 and exists r._value)  // Exclude zero and null values
+  |> filter(fn: (r) => r._value != 0 and exists r._value)
   |> last()
   |> group()  // Group all data together
-  |> min(column: "_value")  // Find the minimum voltage across all trays and cells
+  |> min(column: "_value")
   |> map(fn: (r) => ({
       Attribute: "Lowest Cell Voltage",
-      Status: string(v: r._value) + " V - (" + r.topic + " - " + r._field + ")"  // Display the formatted value
+      Status: string(v: r._value) + " V - (" + r.topic + " - " + r._field + ")"
   }))
   |> keep(columns: ["Attribute", "Status"])
-
-// Query for NrOfModulesOnline
 nrOfModulesOnlineData = from(bucket: "batterydata")
   |> range(start: -5m)
   |> filter(fn: (r) => 
@@ -218,8 +207,6 @@ nrOfModulesOnlineData = from(bucket: "batterydata")
       Status: string(v: r._value)
   }))
   |> keep(columns: ["Attribute", "Status"])
-
-// Query for NrOfModulesOffline
 nrOfModulesOfflineData = from(bucket: "batterydata")
   |> range(start: -5m)
   |> filter(fn: (r) => 
@@ -232,8 +219,6 @@ nrOfModulesOfflineData = from(bucket: "batterydata")
       Status: string(v: r._value)
   }))
   |> keep(columns: ["Attribute", "Status"])
-
-// Query for MinVoltageCellID
 minVoltageCellIDData = from(bucket: "batterydata")
   |> range(start: -5m)
   |> filter(fn: (r) => 
@@ -246,8 +231,6 @@ minVoltageCellIDData = from(bucket: "batterydata")
       Status: string(v: r._value)
   }))
   |> keep(columns: ["Attribute", "Status"])
-
-// Query for MaxVoltageCellID
 maxVoltageCellIDData = from(bucket: "batterydata")
   |> range(start: -5m)
   |> filter(fn: (r) => 
@@ -260,12 +243,10 @@ maxVoltageCellIDData = from(bucket: "batterydata")
       Status: string(v: r._value)
   }))
   |> keep(columns: ["Attribute", "Status"])
-
-// Query for Victron MultiPlus 2 status
 victronStatusData = from(bucket: "victrondata")
   |> range(start: -5m)
   |> filter(fn: (r) => 
-    r.host == "fbe719b5f705" and 
+    r.host == "fbe719b5f305" and 
     r._field == "MultiPlus2_Status")
   |> last()
   |> map(fn: (r) => ({
