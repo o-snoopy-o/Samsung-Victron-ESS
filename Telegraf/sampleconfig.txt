@@ -1,1 +1,163 @@
-Placeholder
+# MQTT Consumer for Battery Data
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://192.168.1.200:1883"]
+  topics = [
+    "bms/system",
+    "bms/tray1",
+    "bms/tray2",
+    "bms/tray3",
+    "bms/tray4",
+    "bms/tray5",
+    "bms/tray6",
+    "bms/tray7",
+    "bms/tray8",
+    "bms/tray9",
+    "bms/tray10",
+    "bms/tray11",
+    "bms/tray12"
+  ]
+  data_format = "json"
+
+# Output for Battery Data to InfluxDB 'batterydata' bucket
+[[outputs.influxdb_v2]]
+  urls = ["http://192.168.1.100:8086"]
+  token = "yourtokenhere"
+  organization = "home"
+  bucket = "batterydata"
+  [[outputs.influxdb_v2.tagpass]]
+    topic = [ "bms/system", "bms/tray1", "bms/tray2", "bms/tray3", "bms/tray4", "bms/tray5", "bms/tray6", "bms/tray7", "bms/tray8", "bms/tray9", "bms/tray10", "bms/tray11", "bms/tray12" ]
+
+
+
+
+
+
+
+# Modbus Input for Fronius Primo 5.0-1
+[[inputs.modbus]]
+  controller = "tcp://192.168.1.150:502"
+  name = "fronius_primo"
+  slave_id = 1
+ [[inputs.modbus.holding_registers]]
+    name = "DC_Power_String_1"
+    byte_order = "AB"
+    data_type = "UINT16"
+    address = [40274]
+    scale = 0.1
+ [[inputs.modbus.holding_registers]]
+    name = "DC_Power_String_2"
+    byte_order = "AB"
+    data_type = "UINT16"
+    address = [40294]
+    scale = 0.1
+  [[inputs.modbus.holding_registers]]
+    name = "AC_Voltage_Phase_1"
+    byte_order = "AB"
+    data_type = "UINT16"
+    address = [40079]
+    scale = 0.01
+  [[inputs.modbus.holding_registers]]
+    name = "AC_Power"
+    byte_order = "ABCD"
+    data_type = "UINT32"
+    address = [499,500]
+    scale = 1.0
+  [[inputs.modbus.holding_registers]]
+    name = "AC_Frequency_Phase_1"
+    byte_order = "AB"
+    data_type = "UINT16"
+    address = [40085]
+    scale = 0.01
+ [[inputs.modbus.holding_registers]]
+    name = "AC_Lifetime_Energy_Production"
+    byte_order = "ABCD"
+    data_type = "UINT32"
+    address = [40093,40094]
+    scale = 0.001
+
+# Output for Fronius Modbus Data to InfluxDB 'froniusdata' bucket
+[[outputs.influxdb_v2]]
+  urls = ["http://192.168.1.100:8086"]
+  token = "yourtokenhere"
+  organization = "home"
+  bucket = "froniusprimodata"
+  [[outputs.influxdb_v2.tagpass]]
+    name = [ "fronius_primo" ]
+
+
+
+
+
+
+
+
+# Modbus Input for Victron MultiPlus2
+[[inputs.modbus]]
+  controller = "tcp://192.168.1.200:502"
+  name = "victron_multipurpose"
+  slave_id = 227
+[[inputs.modbus.holding_registers]]
+    name = "AC_Input_Voltage"
+    byte_order = "AB"
+    data_type = "UINT16"
+    address = [3]
+    scale = 0.1
+[[inputs.modbus.holding_registers]]
+    name = "Energy_From_ACIn1_To_ACOut"
+    byte_order = "DCBA"
+    data_type = "UINT32"
+    address = [90, 91]
+    scale = 0.001
+[[inputs.modbus.holding_registers]]
+    name = "Energy_From_Battery_To_ACOut"
+    byte_order = "DCBA"
+    data_type = "UINT32"
+    address = [74, 75]
+    scale = 0.001
+[[inputs.modbus.holding_registers]]
+    name = "AC_Output_Voltage"
+    byte_order = "AB"
+    data_type = "UINT16"
+    address = [15]
+    scale = 0.1
+[[inputs.modbus.holding_registers]]
+    name = "AC_Input_Power"
+    byte_order = "AB"
+    data_type = "INT16"
+    address = [12]
+    scale = 10.0
+[[inputs.modbus.holding_registers]]
+    name = "AC_Output_Power"
+    byte_order = "AB"
+    data_type = "INT16"
+    address = [23]
+    scale = 10.0
+[[inputs.modbus.holding_registers]]
+    name = "AC_Input_Frequency"
+    byte_order = "AB"
+    data_type = "INT16"
+    address = [9]
+    scale = 0.01
+[[inputs.modbus.holding_registers]]
+    name = "AC_Output_Frequency"
+    byte_order = "AB"
+    data_type = "INT16"
+    address = [21]
+    scale = 0.01
+[[inputs.modbus.holding_registers]]
+    name = "DC_Battery_Current"
+    byte_order = "AB"
+    data_type = "INT16"
+    address = [27]
+    scale = 0.1
+
+
+# Output for Victron MultiPlus2 Data to InfluxDB 'victrondata' bucket
+[[outputs.influxdb_v2]]
+  urls = ["http://192.168.1.100:8086"]
+  token = "yourtokenhere"
+  organization = "home"
+  bucket = "victrondata"
+  [[outputs.influxdb_v2.tagpass]]
+    name = [ "victron_multipurpose" ]
+
