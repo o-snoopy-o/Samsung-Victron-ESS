@@ -8,7 +8,7 @@ const char* ssid = "yournetworkssid";
 const char* password = "yourpasswordorkey";
  
 // MQTT Broker
-const char* mqtt_server = "192.168.1.200";
+const char* mqtt_server = "cerbo-ip";
 const int mqtt_port = 1883;
 const char* mqtt_topics[] = {"bms/system", "bms/tray1", "bms/tray2", "bms/tray3", "bms/tray4", "bms/tray5", "bms/tray6", "bms/tray7", "bms/tray8", "bms/tray9", "bms/tray10"};
  
