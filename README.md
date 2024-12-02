@@ -1,5 +1,8 @@
 # Samsung-Victron ESS Project
 
+## Forward Forward
+This project has now been replaced by a more elegant solution, no further updates will be provided. The new solution can be found here: [dbus-canbus-battery](https://github.com/o-snoopy-o/dbus-canbus-battery/tree/main)
+
 ## Forward
 This is very much a work in progress, I will update this as I get the time. It is not complete but I'm working on it, slowly !
 
